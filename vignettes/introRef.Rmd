@@ -1,0 +1,164 @@
+---
+title: "An Introduction to 'refer' References"
+author: "Christopher Mann"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{An Introduction to 'refer' References}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+The `refer` package allows users to keep references to objects and modify objects in place with relying on reference classes. This article describes how to use `ref` objects by moving objects around a map. Please note that many of the operations in the `refer` package go against the philosophy of R and may lead to inconsistent and unclear code; use sparingly and with caution. 
+
+First, we need to load the `refer` package. 
+
+```{r}
+library(refer)
+```
+
+## Creating References, Reference Expressions, and Slices
+
+Our goal with this project is to population a map. We will use a character matrix and keep it small at 10x10. 
+
+```{r}
+map   <- matrix(' ', nrow=10, ncol=10)
+map
+```
+
+Next, let us create a person to place on the map. The person will keep track of its location and a reference to the map object. We will place a representative of the person on the map.
+
+```{r}
+person <- list(
+  map     = ref(map), 
+  row     = 1,
+  col     = 1
+)
+map[1,1] <- 'X'
+```
+
+Since a reference of the map is placed inside `'person'`, we can always use it to indirectly access the map. Just calling `person$map`, though, only returns the reference not the actual item.
+
+```{r}
+person$map
+```
+
+To return the underlying object, we must 'dereference' the item using either the `deref()` function or the `!` operator.
+
+```{r}
+!person$map
+```
+
+If we add a new object to the original map, then the change is reflected when it is dereferenced from `person`.
+
+```{r}
+map[1,5] <- "O"
+!person$map
+```
+
+`ref` can also be used to build expressions that contain references. For example, `location` below contains a reference to the `row` and `col` of `person`.Dereferencing `location` evaluates the expression, taking note of where person is located when originally created. The effect is similar to creating an active binding. However, active bindings are heavier and much more difficult to pass around, inspect, and so forth. 
+
+```{r}
+location <- ref(c(person$row, person$col))
+location
+```
+
+```{r}
+!location
+```
+
+Since `location` is a reference, updating either `row` or `col` will change the dereferenced value of location.
+
+```{r}
+person$row <- person$row + 1
+!location
+```
+
+Note that `ref` objects automatically dereference when applied to many base functions such arithmetic operators. This includes the standard extraction operators: `$`, `[`, and `[[`. However, these do not overwrite the underlying data.
+
+```{r}
+location + 1
+!location
+```
+
+A `slice` is a special type of reference that refers to part of an object. For example, we could create a slice that points to the second row and last 5 columns of the map. If these values change, the slice reflects these changes. 
+
+```{r}
+row1 <- slice(map, 1, 1:5)
+!row1
+```
+
+```{r}
+map[1, 3] <- "%"
+!row1
+```
+
+When dereferenced, the above `slice` calls `map[2, 6:10]` within the environment that map is located. Since `ref` objects automatically dereference when extraction calls are made, `slice` could even be used on another reference.
+
+```{r}
+loc_row <- slice(location, 1)
+!loc_row
+```
+
+
+## Modifying Variables In Place
+
+The `ref` package contains another of functions to modify objects in place. For example, it includes variations on the standard `+=` and `-=` operators found in many languages such as Python.
+
+```{r}
+person$col %+=% 3
+person$col
+```
+
+```{r}
+person$col %-=% 3
+person$col
+```
+
+These functions can also accept other reference objects. When a reference object is used, the underlying object is modified. This can be dangerous, so use sparingly!
+
+```{r}
+x <- 1:nrow(map)
+slice_x <- slice(x, 3:6)
+slice_x %+=% 10
+x
+```
+
+
+Objects can also be modified in place with custom functions using `modify_by`. 
+
+```{r}
+modify_by(x, sqrt)
+x
+```
+
+`modify_by` can also be used to completely overwrite the value of an object further up the search path by passing a value rather than a function.
+
+```{r}
+modify_by(x, 5)
+x
+```
+
+## Safer References
+
+The general `ref` function automatically dereferences when passed to a wide variety of functions and can modify the underlying objects in place. `sref` is an alternative version of `ref` that does away with this behavior. `sref` objects can still be dereferenced as normal, but attempts to modify or apply functions to the reference will throw an error. Use `sslice` to create `sref` versions of slices.
+
+```{r}
+p <- sref(person)
+!p
+```
+
+```{r eval=FALSE}
+## These will spawn an error. Don't run!
+p$row
+modify_by(p, function(x){ x$row <- x$row + 1; x })
+```
+
+
